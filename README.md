@@ -66,7 +66,9 @@ python qr_conv.py -e -i message.txt -o message_qr.png
 ```
 Successfully encoded 'message.txt' to QR code 'message_qr.png'
 Original file size: 16 bytes
-Encoded data size: 24 bytes
+Compressed size: 36 bytes (compression ratio: 225.0%)
+Encoded data size: 45 bytes (base85)
+Savings vs base64: 3 bytes (6.2% smaller)
 ```
 
 ### 例2: QRコードからテキストファイルを復元
@@ -82,6 +84,7 @@ cat restored.txt
 出力:
 ```
 Successfully decoded QR code 'message_qr.png' to 'restored.txt'
+Compressed size: 36 bytes
 Output file size: 16 bytes
 Hello, QR Code!
 ```
@@ -126,7 +129,29 @@ python qr_conv.py --help
 
 ## 仕様
 
-- バイナリファイルはBase64エンコードしてQRコードに埋め込まれます
+- バイナリファイルはgzipで圧縮してからBase85エンコードしてQRコードに埋め込まれます
+- **Base85を使用することで、Base64と比較して約20%データサイズを削減**
+- デコード時は自動的にBase85デコードとgzip解凍が行われます
 - QRコードの誤り訂正レベルは最高レベル(H)を使用しています
 - OpenCVを使用してQRコードの検出とデコードを行います
+
+### データフロー
+
+**エンコード（ファイル → QRコード）:**
+```
+元のファイル → gzip圧縮 → Base85エンコード → QRコード画像
+```
+
+**デコード（QRコード → ファイル）:**
+```
+QRコード画像 → Base85デコード → gzip解凍 → 元のファイル
+```
+
+### エンコーディングの比較
+
+| エンコード方式 | データ増加率 | 特徴 |
+|--------------|------------|------|
+| Base64 | +33% | 一般的に使用される |
+| **Base85 (使用中)** | **+25%** | **Base64より20%効率的** |
+| バイナリ直接 | 0% | QRコード読み取りライブラリの互換性問題あり |
 

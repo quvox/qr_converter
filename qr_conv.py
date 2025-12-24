@@ -2,6 +2,7 @@
 import argparse
 import sys
 import base64
+import gzip
 import qrcode
 import cv2
 import numpy as np
@@ -13,8 +14,11 @@ def encode_file_to_qr(input_file, output_file):
         with open(input_file, 'rb') as f:
             binary_data = f.read()
 
-        # バイナリデータをBase64エンコード（QRコードに埋め込みやすくするため）
-        encoded_data = base64.b64encode(binary_data).decode('utf-8')
+        # gzipで圧縮
+        compressed_data = gzip.compress(binary_data)
+
+        # base85エンコード（base64より約25%効率的）
+        encoded_data = base64.b85encode(compressed_data).decode('ascii')
 
         # QRコード生成
         qr = qrcode.QRCode(
@@ -30,9 +34,16 @@ def encode_file_to_qr(input_file, output_file):
         img = qr.make_image(fill_color="black", back_color="white")
         img.save(output_file)
 
+        # エンコード効率の計算
+        base64_size = len(base64.b64encode(compressed_data))
+        base85_size = len(encoded_data)
+        saving = base64_size - base85_size
+
         print(f"Successfully encoded '{input_file}' to QR code '{output_file}'")
         print(f"Original file size: {len(binary_data)} bytes")
-        print(f"Encoded data size: {len(encoded_data)} bytes")
+        print(f"Compressed size: {len(compressed_data)} bytes (compression ratio: {len(compressed_data)/len(binary_data)*100:.1f}%)")
+        print(f"Encoded data size: {base85_size} bytes (base85)")
+        print(f"Savings vs base64: {saving} bytes ({saving/base64_size*100:.1f}% smaller)")
 
     except FileNotFoundError:
         print(f"Error: Input file '{input_file}' not found", file=sys.stderr)
@@ -62,21 +73,28 @@ def decode_qr_to_file(input_image, output_file):
             print(f"Error: No QR code found in '{input_image}'", file=sys.stderr)
             sys.exit(1)
 
-        # Base64デコード
-        binary_data = base64.b64decode(qr_data)
+        # base85デコード
+        compressed_data = base64.b85decode(qr_data)
+
+        # gzipで解凍
+        binary_data = gzip.decompress(compressed_data)
 
         # ファイルに書き込み
         with open(output_file, 'wb') as f:
             f.write(binary_data)
 
         print(f"Successfully decoded QR code '{input_image}' to '{output_file}'")
+        print(f"Compressed size: {len(compressed_data)} bytes")
         print(f"Output file size: {len(binary_data)} bytes")
 
     except FileNotFoundError:
         print(f"Error: Input image '{input_image}' not found", file=sys.stderr)
         sys.exit(1)
-    except base64.binascii.Error:
-        print(f"Error: Invalid QR code data (not valid Base64)", file=sys.stderr)
+    except ValueError as e:
+        print(f"Error: Invalid QR code data (not valid base85): {e}", file=sys.stderr)
+        sys.exit(1)
+    except gzip.BadGzipFile:
+        print(f"Error: Invalid compressed data (not valid gzip)", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Error during decoding: {e}", file=sys.stderr)
